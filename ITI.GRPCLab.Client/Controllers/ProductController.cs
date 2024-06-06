@@ -1,12 +1,11 @@
 ﻿using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 using Grpc.Net.Client;
 using ITI.GRPCLab.Server.Protos;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ApiExplorer;
-using Microsoft.OpenApi.Models;
-using System.Net;
-using static ITI.GRPCLab.Server.Protos.InventoryService;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ITI.GRPCLab.Client.Controllers
 {
@@ -14,31 +13,53 @@ namespace ITI.GRPCLab.Client.Controllers
     [ApiController]
     public class ProductController : ControllerBase
     {
+        private const string ApiKey = "AIzaSyD7Q6Q6-4";
+
         [HttpPost]
         public async Task<ActionResult> ManageProduct(Product product)
         {
-            var channel = GrpcChannel.ForAddress("https://localhost:7080");
-            var client = new InventoryServiceClient(channel);
+            var channel = GrpcChannel.ForAddress("https://localhost:7080", new GrpcChannelOptions
+            {
+                Credentials = ChannelCredentials.SecureSsl
+            });
 
-            var productResponse = await client.GetProductByIdAsync(new Id { Id_= product.Id});
+            var callCredentials = CallCredentials.FromInterceptor((context, metadata) =>
+            {
+                metadata.Add("x-api-key", ApiKey);
+                return Task.CompletedTask;
+            });
+
+            var client = new InventoryService.InventoryServiceClient(channel);
+
+            var productResponse = await client.GetProductByIdAsync(new Id { Id_ = product.Id }, new CallOptions(credentials: callCredentials));
 
             if (!productResponse.IsExistd)
             {
-                var addedProduct = await client.AddProductAsync(product);
+                var addedProduct = await client.AddProductAsync(product, new CallOptions(credentials: callCredentials));
                 return Ok(addedProduct);
             }
-            
-            var updatedProduct = await client.UpdateProductAsync(product); 
+
+            var updatedProduct = await client.UpdateProductAsync(product, new CallOptions(credentials: callCredentials));
             return Ok(updatedProduct);
         }
 
         [HttpPost("ProductsAdd")]
         public async Task<ActionResult> AddBulkProducts(List<RecerviedProduct> products)
         {
-            var channel = GrpcChannel.ForAddress("https://localhost:7080");
-            var client = new InventoryServiceClient(channel);
+            var channel = GrpcChannel.ForAddress("https://localhost:7080", new GrpcChannelOptions
+            {
+                Credentials = ChannelCredentials.SecureSsl
+            });
 
-            var response = client.AddBulkProducts();
+            var callCredentials = CallCredentials.FromInterceptor((context, metadata) =>
+            {
+                metadata.Add("x-api-key", ApiKey);
+                return Task.CompletedTask;
+            });
+
+            var client = new InventoryService.InventoryServiceClient(channel);
+
+            using var response = client.AddBulkProducts(new CallOptions(credentials: callCredentials));
             foreach (var item in products)
             {
                 await response.RequestStream.WriteAsync(item);
@@ -48,15 +69,25 @@ namespace ITI.GRPCLab.Client.Controllers
             return Ok(result);
         }
 
-        [HttpGet]
+        [HttpGet("GetReport")]
         public async Task<ActionResult> GetReport()
         {
             List<RecerviedProduct> productToAdds = new List<RecerviedProduct>();
 
-            var channel = GrpcChannel.ForAddress("https://localhost:7080");
-            var client = new InventoryServiceClient(channel);
+            var channel = GrpcChannel.ForAddress("https://localhost:7080", new GrpcChannelOptions
+            {
+                Credentials = ChannelCredentials.SecureSsl
+            });
 
-            var call = client.GetProductReport(new Empty());
+            var callCredentials = CallCredentials.FromInterceptor((context, metadata) =>
+            {
+                metadata.Add("x-api-key", ApiKey);
+                return Task.CompletedTask;
+            });
+
+            var client = new InventoryService.InventoryServiceClient(channel);
+
+            using var call = client.GetProductReport(new Empty(), new CallOptions(credentials: callCredentials));
 
             while (await call.ResponseStream.MoveNext(CancellationToken.None))
             {
